@@ -102,6 +102,11 @@ async function exportDropdownPDFs() {
     const now = new Date();
     const formattedDate = Utilities.formatDate(now, CONFIG.EXPORT.TIMEZONE, CONFIG.EXPORT.DATE_FORMAT);
     
+    // Create Dynamic Export Folder
+    const baseFolder = DriveApp.getFolderById(CONFIG.EXPORT.FOLDER_ID);
+    const exportFolder = baseFolder.createFolder(`PDF_Exports_${formattedDate}`);
+    console.log(`Created new export folder: PDF_Exports_${formattedDate}`);
+
     // Legacy timestamp math from original script (from A1)
     const rawDateValue = targetCell.getSheet().getRange('A1').getValue();
     const dateValueAdjusted = rawDateValue / 100000000000000;
@@ -129,8 +134,8 @@ async function exportDropdownPDFs() {
       const blob = fetchSinglePdfBlob(ssId, printSheetId, dateValueAdjusted, pdfName);
       
       if (blob) {
-        // Save Individual File
-        DriveApp.getFolderById(CONFIG.EXPORT.FOLDER_ID).createFile(blob);
+        // Save Individual File to the dynamic folder
+        exportFolder.createFile(blob);
         generatedBlobs.push(blob);
         successCount++;
         console.log(`✅ Success: ${pdfName}`);
@@ -142,11 +147,11 @@ async function exportDropdownPDFs() {
     // 4. Combine PDFs if requested
     if (CONFIG.EXPORT.COMBINE_PDFS && generatedBlobs.length > 0) {
       console.log("Stitching multi-page PDF together...");
-      await mergePDFs(generatedBlobs, CONFIG.EXPORT.COMBINED_FILE_NAME);
+      await mergePDFs(generatedBlobs, CONFIG.EXPORT.COMBINED_FILE_NAME, exportFolder);
     }
 
     // 5. Completion Summary
-    console.log(`🎉 Process Complete! Generated ${successCount} individual files.`);
+    console.log(`🎉 Process Complete! Generated ${successCount} individual files inside 'PDF_Exports_${formattedDate}'.`);
     
   } catch (error) {
     console.error("🚨 Script Error: " + error.message);
@@ -248,7 +253,7 @@ function fetchSinglePdfBlob(ssId, sheetId, dateValue, pdfName) {
 /**
  * Uses the local pdf-lib library to merge GAS Blobs in server memory.
  */
-async function mergePDFs(blobsArray, combinedFileName) {
+async function mergePDFs(blobsArray, combinedFileName, destinationFolder) {
   try {
     // 1. Create a new, empty PDF document using pdf-lib
     const mergedPdf = await PDFLib.PDFDocument.create();
@@ -272,9 +277,9 @@ async function mergePDFs(blobsArray, combinedFileName) {
     // 4. Convert back to GAS-friendly Signed Int array
     const gasBytes = Array.from(new Int8Array(mergedBytes));
     
-    // 5. Create final Blob and save to Drive
+    // 5. Create final Blob and save to the dynamic Drive folder
     const finalBlob = Utilities.newBlob(gasBytes, 'application/pdf', combinedFileName);
-    DriveApp.getFolderById(CONFIG.EXPORT.FOLDER_ID).createFile(finalBlob);
+    destinationFolder.createFile(finalBlob);
     
     console.log(`✅ Successfully merged and saved: ${combinedFileName}`);
     
